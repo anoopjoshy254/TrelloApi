@@ -3,7 +3,7 @@ pipeline {
     agent any
 
     environment {
-
+        PATH    = "C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin;C:\\Users\\Anoop.K\\AppData\\Local\\Programs\\Git\\cmd;C:\\Program Files\\Docker\\Docker\\resources\\bin;${env.PATH}"
         ACR     = 'trelloacr'
 
         RG      = 'trello-rg'
