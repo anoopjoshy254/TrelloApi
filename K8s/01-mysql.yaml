@@ -43,7 +43,7 @@ spec:
                   name: mysql-secret
                   key: root-password
             - name: MYSQL_DATABASE
-              value: productdb
+              value: trello_db
           ports:
             - containerPort: 3306
           volumeMounts:

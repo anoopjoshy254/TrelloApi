@@ -1,93 +1,97 @@
 pipeline {
- 
+
     agent any
- 
+
     environment {
-        IMAGE = "trello-api:${BUILD_NUMBER}"
-        NETWORK = "trello-net"
-        MYSQL_CONT = "trello-mysql"
-        API_CONT = "trello-api"
- 
-        MYSQL_PWD = "root"
-        MYSQL_DB = "trello_db"
+
+        ACR     = 'trelloacr'
+
+        RG      = 'trello-rg'
+
+        AKS     = 'trello-aks'
+
+        IMAGE   = 'trello-api'
+
+        AZ_CLIENT_ID     = credentials('azure-client-id')
+
+        AZ_CLIENT_SECRET = credentials('azure-client-secret')
+
+        AZ_TENANT_ID     = credentials('azure-tenant-id')
+
     }
- 
+
     stages {
- 
+
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+
+            steps { checkout scm }
+
         }
- 
-        stage('Build Docker Image') {
+
+        stage('Build image') {
+
             steps {
-                bat "docker build -t %IMAGE% ."
+
+                bat 'docker build --platform linux/amd64 -t %ACR%.azurecr.io/%IMAGE%:%BUILD_NUMBER% -t %ACR%.azurecr.io/%IMAGE%:latest .'
+
             }
+
         }
- 
-        stage('Create Network') {
+
+        stage('Login to Azure') {
+
             steps {
-                bat "docker network inspect %NETWORK% >nul 2>&1 || docker network create %NETWORK%"
+
+                bat 'az login --service-principal -u %AZ_CLIENT_ID% -p %AZ_CLIENT_SECRET% --tenant %AZ_TENANT_ID%'
+
+                bat 'az acr login -n %ACR%'
+
             }
+
         }
- 
-        stage('Start MySQL') {
+
+        stage('Push to ACR') {
+
             steps {
-                bat """
-                docker rm -f %MYSQL_CONT% 2>nul
- 
-                docker run -d --name %MYSQL_CONT% --network %NETWORK% ^
-                    -e MYSQL_ROOT_PASSWORD=%MYSQL_PWD% ^
-                    -e MYSQL_DATABASE=%MYSQL_DB% ^
-                    -p 3307:3306 ^
-                    -v mysql-data:/var/lib/mysql ^
-                    mysql:8.0
-                """
+
+                bat 'docker push %ACR%.azurecr.io/%IMAGE%:%BUILD_NUMBER%'
+
+                bat 'docker push %ACR%.azurecr.io/%IMAGE%:latest'
+
             }
+
         }
- 
-        stage('Wait for MySQL (HEALTHCHECK equivalent)') {
+
+        stage('Deploy to AKS') {
+
             steps {
-                bat """
-                echo Waiting for MySQL to be ready...
- 
-                :loop
-                docker exec %MYSQL_CONT% mysqladmin ping -h localhost -uroot -p%MYSQL_PWD% >nul 2>&1
- 
-                IF ERRORLEVEL 1 (
-                    timeout /t 5 >nul
-                    goto loop
-                )
- 
-                echo MySQL is ready!
-                """
+
+                bat 'az aks get-credentials -n %AKS% -g %RG% --overwrite-existing'
+
+                powershell '(Get-Content k8s/02-api.yaml) -replace "<ACR_NAME>", $env:ACR | Set-Content $env:TEMP\\02-api.yaml'
+
+                bat 'kubectl apply -f k8s/01-mysql.yaml'
+
+                bat 'kubectl apply -f %TEMP%\\02-api.yaml'
+
+                bat 'kubectl set image deployment/trello-api trello-api=%ACR%.azurecr.io/%IMAGE%:%BUILD_NUMBER%'
+
+                bat 'kubectl rollout status deployment/trello-api --timeout=120s'
+
             }
+
         }
- 
-        stage('Run API') {
-            steps {
-                bat """
-                docker rm -f %API_CONT% 2>nul
- 
-                docker run -d --name %API_CONT% --network %NETWORK% ^
-                    -e ASPNETCORE_ENVIRONMENT=Development ^
-                    -e ASPNETCORE_URLS=http://+:8080 ^
-                    -e MYSQL_CONNECTION_STRING="Server=%MYSQL_CONT%;Port=3306;Database=%MYSQL_DB%;User=root;Password=%MYSQL_PWD%;" ^
-                    -e JWT_ISSUER=trello-api ^
-                    -e JWT_AUDIENCE=trello-clone ^
-                    -e JWT_SECRET=change-this-development-secret-at-least-32-characters ^
-                    -e JWT_ACCESS_TOKEN_MINUTES=60 ^
-                    -e JWT_REFRESH_TOKEN_DAYS=30 ^
-                    -e MEDIA_BASE_URL=/media ^
-                    -p 5095:8080 ^
-                    -v api-media:/app/SimpleStorage ^
-                    %IMAGE%
-                """
-            }
-        }
- 
+
     }
+
+    post {
+
+        success { echo "trello-api ${BUILD_NUMBER} deployed to AKS." }
+
+        failure { echo 'trello-api pipeline failed.' }
+
+        always  { bat 'az logout || exit 0' }
+
+    }
+
 }
- 
- 

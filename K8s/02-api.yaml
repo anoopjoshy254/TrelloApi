@@ -4,25 +4,25 @@ metadata:
   name: api-secret
 type: Opaque
 stringData:
-  connection-string: "Server=app-mysql;Port=3306;Database=productdb;User=root;Password=rootpassword;"
+  connection-string: "Server=app-mysql;Port=3306;Database=trello_db;User=root;Password=rootpassword;"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-api
+  name: trello-api
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: product-api
+      app: trello-api
   template:
     metadata:
       labels:
-        app: product-api
+        app: trello-api
     spec:
       containers:
-        - name: product-api
-          image: fullstackacr.azurecr.io/product-api:latest
+        - name: trello-api
+          image: <ACR_NAME>.azurecr.io/trello-api:latest
           env:
             - name: ConnectionStrings__DefaultConnection
               valueFrom:
@@ -41,10 +41,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-api
+  name: trello-api
 spec:
   selector:
-    app: product-api
+    app: trello-api
   ports:
     - port: 5000
       targetPort: 8080
