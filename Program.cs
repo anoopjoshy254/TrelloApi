@@ -23,7 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ═══════════════════════════════════════════════════════════════════════
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = builder.Configuration["MYSQL_CONNECTION_STRING"] ?? builder.Configuration.GetConnectionString("DefaultConnection");
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0)), mySql =>
     {
         mySql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null);
